@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 // Connecting to MongoDB
-mongoose.connect('mongodb+srv://urlshort:urlshort123@cluster0.70nqoe4.mongodb.net/?retryWrites=true&w=majority', {
+mongoose.connect('mongodb+srv://urls:urls1234@cluster0.70nqoe4.mongodb.net/?retryWrites=true&w=majority', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
@@ -80,16 +80,16 @@ const userSchema = new mongoose.Schema({
     
          const mailOptions = {
            from: 'nestor41@ethereal.email',
-          to: myUser.email,
+          to: newmyUser.username,
            subject: 'Account Activation',
            text: `You are receiving this email because you requested a Account activation. Click the following link to reset your password: http://localhost:3000/account-activate/${activationToken}`,
          };
     
           transporter.sendMail(mailOptions);
     
-//         res.json({ message: 'Password reset email sent',resetToken });
+
   
-      res.status(201).json({ message: 'User registered successfully and check your email to activate the account', activationToken });
+      res.status(201).json({ message: 'User registered successfully and check your email to activate the account', activationToken, activeStatus: newmyUser.activeStatus});
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Internal server error' });
@@ -97,9 +97,9 @@ const userSchema = new mongoose.Schema({
   });
 
 // Endpoint to activate the account when the user clicks the activation link
-app.get('/url/account-activate/:token', async (req, res) => {
+app.post('/url/account-activate/:token', async (req, res) => {
     try {
-      const { token } = req.params;
+      const { token } = req.body;
       const user = await myUser.findOne({ activeToken: token });
   
       if (!user) {
@@ -170,7 +170,7 @@ app.get('/url/account-activate/:token', async (req, res) => {
   
       // Update user's reset token and expiration
       myuser.resetToken = resetToken;
-      myuser.resetTokenExpiration = Date.now() + 3600000; // 1 hour
+      myuser.resetTokenExpiration = Date.now() + 3600000; 
       await myuser.save();
   
       // Send password reset email
@@ -252,9 +252,13 @@ app.get('/url/account-activate/:token', async (req, res) => {
       type: Date,
       default: Date.now,
     },
+    clickCount: {
+    type: Number,
+    default: 0,
+  },
   });
   
-  const Url = mongoose.model('Url', urlSchema); // Rename the variable here
+  const Url = mongoose.model('Url', urlSchema); 
   
   app.post('/url/shorten', async (req, res) => {
     try {
@@ -267,7 +271,7 @@ app.get('/url/account-activate/:token', async (req, res) => {
       const shortCode = shortid.generate();
       const shortUrl = `http://localhost:3000/url/${shortCode}`;
   
-      const newUrl = new Url({ // Use a different variable name here
+      const newUrl = new Url({ 
         originalUrl: longUrl,
         shortUrl,
       });
@@ -293,7 +297,50 @@ app.get('/url/:shortUrl', async (req, res) => {
       return res.status(404).json({ message: 'Short URL not found' });
     }
 
+    urlRecord.clickCount += 1;
+    await urlRecord.save();
+
+
     res.redirect(urlRecord.originalUrl);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+app.get('/url/click-count/:shortUrl', async (req, res) => {
+  try {
+    const { shortUrl } = req.params;
+
+    const urlRecord = await Url.findOne({ shortUrl: `http://localhost:3000/url/${shortUrl}` });
+
+    if (!urlRecord) {
+      return res.status(404).json({ message: 'Short URL not found' });
+    }
+
+    const clickCount = urlRecord.clickCount;
+    res.json({ clickCount });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Endpoint to increase the click count when a short URL is clicked
+app.get('/url/increase-click-count/:shortCode', async (req, res) => {
+  try {
+    const { shortCode } = req.params;
+
+    const urlRecord = await Url.findOne({ shortUrl: `http://localhost:3000/url/${shortCode}` });
+
+    if (!urlRecord) {
+      return res.status(404).json({ message: 'Short URL not found' });
+    }
+
+    urlRecord.clickCount += 1;
+    await urlRecord.save();
+
+    res.status(200).json({ message: 'Click count increased' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal server error' });
@@ -321,6 +368,7 @@ app.get('/url/stats/day', async (req, res) => {
             year: { $year: '$createdAt' },
             month: { $month: '$createdAt' },
             day: { $dayOfMonth: '$createdAt' },
+            shortUrl: '$shortUrl', 
           },
           count: { $sum: 1 },
         },
@@ -344,6 +392,7 @@ app.get('/url/stats/month', async (req, res) => {
           _id: {
             year: { $year: '$createdAt' },
             month: { $month: '$createdAt' },
+            shortUrl: '$shortUrl', 
           },
           count: { $sum: 1 },
         },
@@ -356,7 +405,6 @@ app.get('/url/stats/month', async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
-
 //getting all created urls
 
 app.get('/all', async (req, res) => {
